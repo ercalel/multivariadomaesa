@@ -1,0 +1,292 @@
+---
+title: "Métodos multivariados - Tarea 2"
+author: "Elmer Calel - 201213600"
+date: "29/3/2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 5
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Librerías utilizadas
+library(mvtnorm)
+library(ggplot2)
+library(GGally)
+library(MVN)
+library(boot)
+library(vegan)
+library(FactoMineR)
+library(factoextra)
+library(ggcorrplot)
+library(corrplot)
+library(readr)
+library(psych)
+library(polycor)
+library(GPArotation)
+```
+
+## Problema 1:
+
+- Con el comando rmvnorm de la librería mtvnorm  generar  una  muestra  de tamaño 1000 de una distribución normal tridimensional con vector de medias = 1,2,-5 y matriz de covarianzas sigma = 
+\begin{array}{ll}
+1 & 1 & 0 \\
+1 & 2 & 0 \\
+0 & 0 & 5
+\end{array}
+
+```{r}
+mu <- c(1,2,-5)
+mu
+
+sigma <- matrix(c(1,1,0,
+                               1,2,0,
+                               0,0,5), ncol = 3, byrow = F)
+sigma
+```
+
+- Fije el valor de la semilla a 34 y guarde el resultado de la muestra en una variable.
+```{r}
+set.seed(34)
+```
+
+- Utilice    calcule el vector de medias  de su muestra.
+```{r}
+dist_mult_norm <- rmvnorm(1000, mean = mu, sigma = sigma)
+head(dist_mult_norm)
+
+vector_medias <- colMeans(dist_mult_norm)
+vector_medias
+```
+
+- Encuentre la matriz de covarianzas de su muestra  con el comando cov
+```{r}
+cov(dist_mult_norm)
+```
+
+- Aplique la prueba de Shapiro-Wilk  a cada columna de su muestra  para verificar normalidad  en cada variable.
+```{r}
+plotn <- function(x,main="Histograma de frecuencias \ny distribución normal",
+                  xlab="X",ylab="Densidad") {
+  min <- min(x)
+  max <- max(x)
+  media <- mean(x)
+  dt <- sd(x)
+  hist(x,freq=F,main=main,xlab=xlab,ylab=ylab)
+  curve(dnorm(x,media,dt), min, max,add = T,col="blue")
+}
+
+dist_mult_norm.v1 <- shapiro.test(dist_mult_norm[,1])
+dist_mult_norm.v1
+
+dist_mult_norm.v2 <- shapiro.test(dist_mult_norm[,2])
+dist_mult_norm.v2
+
+dist_mult_norm.v3 <- shapiro.test(dist_mult_norm[,3])
+dist_mult_norm.v3
+
+par(mfrow=c(2,2))
+plotn(dist_mult_norm[,1],main="Distribución normal V1")
+plotn(dist_mult_norm[,2],main="Distribución normal V2")
+plotn(dist_mult_norm[,3],main="Distribución normal V3")
+```
+
+- Grafique   el conjunto de datos con el comando ggpairs  de GGally.
+```{r}
+ggpairs(as.data.frame(dist_mult_norm), title = "dist_mult_norm", diag = NULL, upper = NULL)
+```
+
+- Aplique la prueba de normalidad multivariada de MARDIA utilizando el  comando mvn de la librería MVN, utilice la opción multivariatePlot = "qq".
+```{r}
+mvn(dist_mult_norm, mvnTest = "mardia", multivariatePlot = "qq")
+```
+
+## Problema 2
+Para este ejercicio utilizara el conjunto de datos  frets(dimensiones de longitud y ancho de cabeza del primer y segundo hijo) del paquete boot.
+
+```{r}
+frets
+```
+
+- Grafique los datos con ggpairs
+```{r}
+ggpairs(frets, title = "frets", diag = NULL, upper = NULL)
+```
+
+- ¿EL conjunto de datos presenta normalidad  multivariada?
+```{r}
+mvn(frets, multivariatePlot = "pp")
+```
+Según los resultados obtenidos, el conjnto de datos si presenta normalidad multivariada.
+
+
+- ¿Qué  variables se comportan de forma normal?
+```{r}
+mvn(frets, mvnTest = "royston", univariateTest = "Lillie", desc = TRUE, univariatePlot = "histogram")
+```
+Las variables que presentan normalidad son l1, b1, l2 y b2.
+
+- Grafique  la matriz de correlaciones
+```{r}
+cor(frets)
+pairs(frets, panel=panel.smooth, cex.labels = 1, font.labels=1)
+```
+
+- Calcule la correlación múltiple de  (l2,b2) con l1
+```{r}
+modelo <- lm(frets$l1~frets$l2 + frets$b2)
+cor(frets$l1,modelo$fitted.values)
+```
+
+- Encuentre la correlación múltiple de  (l2,b2) con b1
+```{r}
+modelo <- lm(frets$l1~frets$l2 + frets$b2)
+cor(frets$b1,modelo$fitted.values)
+```
+
+- Calcule las correlaciones canónicas de  (l1,b1) con (l2,b2)
+```{r}
+x = frets[,1:2]
+y = frets[,3:4]
+x
+CCorA(x,y)
+```
+
+## Problema 3 
+En este problema  analizara   el conjunto de datos USArrests. Necesitará utilizar las librerías FactoMineR, factoextra
+```{r}
+head(USArrests)
+str(USArrests)
+```
+
+- Utilice el comando PCA  para  hacer un objeto con todo el análisis de componentes principales el conjunto de datos USArrest.  Guarde este objeto en una variable  llamada pca_usarrest
+```{r}
+pca_usarrest <- PCA(USArrests, graph = F)
+var <- get_pca_var(pca_usarrest)
+ind <- get_pca_ind(pca_usarrest)
+```
+
+- Dibuje el Scree plot,   para las componentes principales
+```{r}
+fviz_screeplot(pca_usarrest,addlabels=T,ylim=c(0,75))
+```
+
+- Imprima  pca_usarrest$eig  
+```{r}
+pca_usarrest$eig
+```
+
+- Grafique con un diagrama de barras  el acumulado del  porcentaje de la varianza.
+```{r}
+corrplot(var$cos2,is.corr = F)
+```
+
+- Dibuje el grafico de contribuciones de las componentes  para  cada variable.
+```{r}
+fviz_contrib(pca_usarrest,choice = "var",axes = 1)
+fviz_contrib(pca_usarrest,choice = "var",axes = 2)
+```
+
+- Grafique las variables.  
+```{r}
+fviz_pca_var(pca_usarrest,col.var="contrib",
+             gradient.col="npg",repel = T)+ggtitle("Gráfico de variables")+theme_minimal()
+```
+
+- Grafique a los individuos.
+```{r}
+fviz_pca_ind(pca_usarrest,geom.ind = "point",
+             col.ind="cos2",gradient.col="jco") + ggtitle("Grafico de  los individuos")
+```
+
+- Grafique variables e individuos.
+```{r}
+fviz_pca_biplot(pca_usarrest,var="contrib",
+                palette =  "uchicago" ,repel = T)+ggtitle("Variables e individuos")+theme_minimal()
+```
+
+- Si necesita  tener un nuevo conjunto de datos que  presente el 80% de la varianza del conjunto original  ¿Cuántas componentes debe utilizar?
+
+**Se necesitan 2 componentes, según el Screen plot de las componentes principales.**
+
+- Escriba las ecuaciones necesarias para la transformación con dos componentes
+
+Dado que  $$Y = XT $$ es lo que se llama transformación por componentes princiapales.
+
+Primero se debe calcular el vector de medias y la matriz de varianzas.
+Luego se obtienen los valores porpios y sus respectivos vetores propios.
+
+## Problema 4  
+Para este problema utilizara  el conjunto de datos estilos.csv (cuestionario con 32 preguntas acerca del  humor) su objetivo es reducir el conjunto de datos  de las 32 preguntas
+```{r}
+estilos <- read_delim("../Data/estilos.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE)
+str(estilos)
+head(estilos)
+esitlos_f <- estilos[,1:36]
+```
+
+- Verifique que el conjunto de datos  sea factorizable, para ello, grafique la matriz de correlaciones policorica,  aplique la prueba de Bartlett y el criterio Kaiser-Meyer-Olkin.
+
+Matriz de correlación policorica
+```{r}
+mat_cor <- hetcor(esitlos_f)$correlations
+ggcorrplot(mat_cor,type="lower",hc.order = T)
+```
+
+Prueba de Bartlett
+```{r}
+cortest.bartlett(mat_cor)->p_esf
+p_esf$p
+```
+Según el valor se rechaza la hipotesis nula de que los datos no están correlacionadas.
+
+Prueba de Kaiser-Meyer-Olkin (KMO)
+```{r}
+KMO(mat_cor)
+```
+En este caso el resultado es 0.2, que segun valores de referencia está en en el rengo inaceptable.
+
+- Grafique  el scree plot y efectué un análisis paralelo  para ver el número necesario de factores.
+```{r}
+scree(mat_cor)
+fa.parallel(mat_cor,n.obs=200,fa="fa",fm="minres")
+```
+
+- ¿Cuántos factores puede utilizar para representar el conjunto de datos?
+
+Según los resultados obtenidos por el screen plot, se pueden utilizar 5 factores para repesentar el conjunto de datos.
+
+- Realice  una reducción  del conjunto de datos  utilizando 4 factores  llamados Autoesfuerzo, afiliativo, agresivo, defensivo, utilice el método minres,   con  rotación varimax.
+```{r}
+modelo <- fa(estilos[,33:36], nfactors = 4, rotate = "varimax", fm="minres")
+modelo
+```
+
+- Dibuje un  biplot de  dos factores.
+```{r}
+biplot.psych(fa(estilos[,33:36], nfactors = 2, fm="minres", rotate = "varimax"), main = "Biplot con rotación varimax", col = c(2,3,4), pch = c(21,18), group = c(1,2))
+```
+
+- Imprima las comunidades y las unicidades.
+```{r}
+c1 <- sort(modelo$communality,decreasing = T)
+head(cbind(c1))
+
+u1 <- sort(modelo$uniquenesses,decreasing = T)
+head(cbind(u1))
+```
+
+- Imprima un diagrama que explique el análisis factorial.
+```{r}
+modelo_varimax<-fa(mat_cor,nfactors = 5,rotate = "varimax", fa="minres")
+fa.diagram(modelo_varimax)
+```
+

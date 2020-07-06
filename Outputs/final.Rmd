@@ -1,0 +1,375 @@
+---
+title: "Final"
+author: "Elmer Calel"
+date: "16/5/2020"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 5
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  pdf_document:
+    toc: yes
+    toc_depth: '5'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Instrucciones:
+- Resolver cada uno de los problemas.
+
+- El primer problema es una prueba realizada por un banco del sistema para evaluar a los aspirantes a un cargo dentro de esa institución. Resolverlo utilizando R o equivalente.
+
+- En el segundo problema hacer lo que se solicita, efectuar anova y análisis post-hoc si fuera necesario.
+
+- Dejar constancia de cada uno de los problemas y enviar archivo csv para el primer problema y un pdf para la soluciones de ambos.
+
+```{r}
+# Librerías
+library(readxl)
+library(ggpubr)
+library(MVN)
+library(biotools)
+library(car)
+library(lsr)
+library(readr)
+library(tidyverse)
+library(ggcorrplot)
+library(corrplot)
+library(factoextra)
+library(FactoMineR)
+library(pROC)
+```
+
+## Problema 1
+
+### Manipulación de los datos
+
+Se acrga el set de datos de entrenamiento para el modelo.
+
+```{r}
+Base_entrenamiento <- read_csv("../Data/Base_entrenamiento.csv")
+```
+
+Se excluyen las variables que no generan valor al análisis.
+
+```{r}
+Base_entrenamiento.data <- Base_entrenamiento %>% 
+  select(-cp_inicial_menos_saldo,
+         -cp_inicial_menos_saldo,
+         -cp_cuotas_falta,
+         -cp_nro_cuota,
+         -cp_valor_inicial,
+         -cp_cuota_sobre_saldo,
+         -cp_saldo_sobre_inicial,
+         -cp_esta_cuota_otro,
+         -cp_porc_valorcuot_ing,
+         -cp_saldo,
+         -cp_cuota_sobre_inicial,
+         -cp_porc_saldo_ing,
+         -cp_valor_cuota,
+         -banca_completa,
+         -segmentoestructural,
+         -subsegmentoestructural,
+         -y_auto_cura,
+         -llave)
+```
+
+### PCA para obtener las variables el modelo
+
+Se procede a relizar un análisis de componentes principales para determinar cuáles son las variables que generan valor al análisis.
+
+```{r}
+ggcorrplot(cor(Base_entrenamiento.data), hc.order = T, type = "lower")
+
+pca_Base_entrenamiento <- PCA(Base_entrenamiento.data, graph = F)
+
+var <- get_pca_var(pca_Base_entrenamiento)
+
+corrplot(var$cos2, is.corr = F)
+
+fviz_screeplot(pca_Base_entrenamiento, addlabels = T, ylim =c (0, 16))
+
+fviz_contrib(pca_Base_entrenamiento, choice = "var", axes = 5)
+
+```
+
+Del análisis anterior, se determinó que para el modelo se utilizaránr solo las siguientes variables:
+
+- nro_gestiones
+
+- gestiones_eficaces
+
+- mejor_gestion
+
+- gsm_prom_dias_gest
+
+- gsm_mejor_gestion_3m
+
+- gsm_mejor_gestion
+
+- gestiones_prod
+
+- pc_cant_moras_60_ult_12_meses
+
+- pc_cant_moras_90_ult_12_meses
+
+- pc_cant_mora90_ult_12m_total
+
+- pc_cant_moras_30_ult_12_meses
+
+- pc_cant_moras_60_ult_3_meses
+
+- pc_cant_moras_30_ult_3_meses
+
+### Construcción del modelo 
+
+```{r}
+# explorando variable respuesta
+prop.table(table(Base_entrenamiento$y_auto_cura))
+```
+
+#### Regresión logística
+
+Dado al estudio se construirá un modelo de regresión logística porque se trata de estimar la probabilidad de ocurrencia de un evento binario.
+
+Construcción del modelo:
+
+```{r}
+modelo <- glm(Base_entrenamiento$y_auto_cura~nro_gestiones+
+              gestiones_eficaces+
+              mejor_gestion+
+              gsm_prom_dias_gest+
+              gsm_mejor_gestion_3m+
+              gsm_mejor_gestion+
+              gestiones_prod+
+              pc_cant_moras_60_ult_12_meses+
+              pc_cant_moras_90_ult_12_meses+
+              pc_cant_mora90_ult_12m_total+
+              pc_cant_moras_30_ult_12_meses+
+              pc_cant_moras_60_ult_3_meses+
+              pc_cant_moras_30_ult_3_meses,
+            data = Base_entrenamiento.data,
+            family = binomial)
+```
+
+Cálculo de la variable respuesta:
+
+```{r}
+pred_p <- predict(modelo, type="response")
+head(pred_p, 10)
+```
+
+Conversión de la probabilidad de clasificación:
+
+```{r}
+pred <- ifelse(pred_p > 0.5,1,0)
+sum(pred)
+```
+
+Precisión del modelo:
+
+```{r}
+# Precisión
+precision <- mean(Base_entrenamiento$y_auto_cura == pred)
+precision
+
+#Error
+1 - precision
+```
+
+Matriz de confusión:
+
+```{r}
+conf <- table(Base_entrenamiento$y_auto_cura, pred, dnn = c("Actual", "Predicho"))
+conf
+```
+
+Gráfica de la matriz de confusión:
+
+```{r}
+mosaicplot(conf, col = 2:4)
+```
+
+Curva ROC y área bajo la curva:
+
+```{r}
+ROC <- roc(Base_entrenamiento$y_auto_cura, pred)
+plot(ROC)
+
+auc(ROC)
+```
+
+#### Probando el modelo
+
+Se carga el set de datos para probar el modelo y se exporta el resultado a un archivo csv.
+
+```{r}
+Base_prueba <- read_csv("../Data/Base_prueba.csv")
+
+Base_prueba <- Base_prueba %>%
+  select("nro_gestiones",
+         "gestiones_eficaces",
+         "mejor_gestion",
+         "gsm_prom_dias_gest",
+         "gsm_mejor_gestion_3m",
+         "gsm_mejor_gestion",
+         "gestiones_prod",
+         "pc_cant_moras_60_ult_12_meses",
+         "pc_cant_moras_90_ult_12_meses",
+         "pc_cant_mora90_ult_12m_total",
+         "pc_cant_moras_30_ult_12_meses",
+         "pc_cant_moras_60_ult_3_meses",
+         "pc_cant_moras_30_ult_3_meses",
+         "llave")
+
+pred_p <- predict(modelo, Base_prueba[,-14])
+pred <- ifelse(pred_p > 0.5,1,0)
+Base_prueba$probabilidad  <- pred_p
+Base_prueba$auto_cura <- pred
+
+write_csv(Base_prueba[, 14:16], "../Data/Base_prueba_evaluado.csv")
+```
+
+## Problema 2
+
+Realizar una análisis manova para las 5 variables del problema  15.7.2 del libro de cuadras,  cada columna es una variable biometrica. Los factores son el sexo y la localidad.
+
+Se tienen medidas de 5 variables biométricas sobre 6 especies de coleópteros del género Timarcha encontradas en 8 localidades distintas.
+
+Las medidas (en mm.) son:
+
+X1 = longitud Prognoto,
+X2 = diametro máximo prognoto,
+X3 = base prognoto,
+X4 = longitutd. Èlitros,
+X5 = diametro máximo Èlitros.
+
+```{r}
+escarab <- read_excel("../Data/escarab.xlsx")
+head(escarab, 3)
+```
+
+### Visualización
+
+```{r}
+ggboxplot(escarab, x = "Sexo",y = c("X1", "X2", "X3", "X4", "X5"), merge = T, palette = "jco")
+
+ggboxplot(escarab, x = "Localidad",y = c("X1", "X2", "X3", "X4", "X5"), merge = T, palette = "jco")
+```
+
+### Cálculo estadístico
+
+```{r}
+aggregate(escarab[,1:5], list(escarab$Sexo, escarab$Localidad), mean)
+
+aggregate(escarab[,1:5], list(escarab$Sexo, escarab$Localidad), length)
+
+aggregate(escarab[,1:5], list(escarab$Sexo, escarab$Localidad), sd)
+
+```
+
+### Normalidad univariada
+
+```{r}
+normal <- function(vec){
+  shapiro.test(vec)$p
+}
+aggregate(escarab[,1:5], list(escarab$Sexo, escarab$Localidad), normal)
+```
+
+### Normalidad Multiple
+
+```{r}
+mvn(escarab[ , c(1,2,3,4,5)], mvnTest = "hz")
+```
+
+### Pruebas de varianzas y covarianzas
+
+```{r}
+boxM(data = escarab[,c(1,2,3,4,5)], grouping = escarab$Sexo)
+
+boxM(data = escarab[,c(1,2,3,4,5)], grouping = escarab$Localidad)
+
+leveneTest(X1~Sexo, escarab)
+leveneTest(X1~Localidad, escarab)
+
+leveneTest(X2~Sexo, escarab)
+leveneTest(X2~Localidad, escarab)
+
+leveneTest(X3~Sexo, escarab)
+leveneTest(X3~Localidad, escarab)
+
+leveneTest(X4~Sexo, escarab)
+leveneTest(X4~Localidad, escarab)
+
+leveneTest(X5~Sexo, escarab)
+leveneTest(X5~Localidad, escarab)
+```
+
+### Modelo Manova
+
+```{r}
+mod1 <- manova(cbind(X1, X2, X3, X4, X5)~Sexo+Localidad, data = escarab)
+summary(mod1)
+```
+
+#### modelo con interacción
+
+```{r}
+mod2 <- manova(cbind(X1, X2, X3, X4, X5)~Sexo*Localidad, data = escarab)
+summary(mod2)
+```
+
+### Modelos univariados
+
+```{r}
+m1 <- aov(X1~Localidad, data=escarab)
+summary(m1)
+m2 <- aov(X2~Localidad, data=escarab)
+summary(m2)
+m3 <- aov(X3~Localidad, data=escarab)
+summary(m3)
+m4 <- aov(X4~Localidad, data=escarab)
+summary(m4)
+m5 <- aov(X5~Localidad, data=escarab)
+summary(m5)
+
+m6 <- aov(X1~Localidad*Sexo, data=escarab)
+summary(m6)
+m7 <- aov(X2~Localidad*Sexo, data=escarab)
+summary(m7)
+m8 <- aov(X3~Localidad*Sexo, data=escarab)
+summary(m8)
+m9 <- aov(X2~Localidad*Sexo, data=escarab)
+summary(m9)
+m10 <- aov(X3~Localidad*Sexo, data=escarab)
+summary(m10)
+```
+
+### análisis post hoc
+
+```{r}
+etaSquared(m1)
+etaSquared(m2)
+etaSquared(m3)
+etaSquared(m4)
+etaSquared(m5)
+etaSquared(m6)
+etaSquared(m7)
+etaSquared(m8)
+etaSquared(m9)
+etaSquared(m10)
+
+post <- TukeyHSD(m1)
+post
+
+plot(post)
+```
+
